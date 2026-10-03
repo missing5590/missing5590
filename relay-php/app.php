@@ -8,7 +8,7 @@
  */
 declare(strict_types=1);
 
-// PHP 7.4+ bilan mos (xostingdagi PHP 7.4 uchun).
+// PHP 7.0+ bilan mos (eski xosting PHP versiyalari uchun ataylab oddiy sintaksis).
 
 function relay_now(): string
 {
@@ -26,7 +26,7 @@ function relay_connect(array $cfg): PDO
     return $db;
 }
 
-function relay_ensure_schema(PDO $db): void
+function relay_ensure_schema(PDO $db)
 {
     $mysql = $db->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql';
     $pk = $mysql ? 'INT AUTO_INCREMENT PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
@@ -88,7 +88,7 @@ function relay_public(array $row): array
     ];
 }
 
-function relay_get(PDO $db, int $id): ?array
+function relay_get(PDO $db, int $id)
 {
     $st = $db->prepare('SELECT * FROM receipts WHERE id = ?');
     $st->execute([$id]);
@@ -96,17 +96,22 @@ function relay_get(PDO $db, int $id): ?array
     return $row ?: null;
 }
 
-function relay_event(PDO $db, array $row, string $type, ?string $document = null, ?string $error = null): void
+function relay_event(PDO $db, array $row, string $type, $document = null, $error = null)
 {
     $db->prepare('INSERT INTO events(receipt_id, source_id, type, document, error, created_at) VALUES(?, ?, ?, ?, ?, ?)')
         ->execute([$row['id'], $row['source_id'], $type, $document, $error, relay_now()]);
 }
 
-function relay_update(PDO $db, int $id, array $fields): void
+function relay_update(PDO $db, int $id, array $fields)
 {
     $fields['updated_at'] = relay_now();
-    $cols = implode(', ', array_map(fn($k) => "$k = ?", array_keys($fields)));
-    $db->prepare("UPDATE receipts SET $cols WHERE id = ?")->execute([...array_values($fields), $id]);
+    $cols = array();
+    foreach (array_keys($fields) as $k) {
+        $cols[] = "$k = ?";
+    }
+    $params = array_values($fields);
+    $params[] = $id;
+    $db->prepare('UPDATE receipts SET ' . implode(', ', $cols) . ' WHERE id = ?')->execute($params);
 }
 
 /**
@@ -121,7 +126,7 @@ function relay_handle(PDO $db, array $cfg, string $method, string $path, array $
     }
 
     if ($path === '/health') {
-        return [200, ['ok' => true]];
+        return [200, ['ok' => true, 'php' => PHP_VERSION]];
     }
 
     $isServer = $apiKey !== '' && hash_equals((string)$cfg['server_key'], $apiKey);
@@ -141,12 +146,15 @@ function relay_handle(PDO $db, array $cfg, string $method, string $path, array $
             $st = $db->prepare("SELECT e.*, r.check_number FROM events e JOIN receipts r ON r.id = e.receipt_id
                 WHERE e.id > ? ORDER BY e.id LIMIT $limit");
             $st->execute([$after]);
-            $events = array_map(fn($e) => [
-                'id' => (int)$e['id'], 'receipt_id' => (int)$e['receipt_id'],
-                'source_id' => (int)$e['source_id'], 'check_number' => $e['check_number'],
-                'type' => $e['type'],
-                'document' => $e['document'], 'error' => $e['error'], 'created_at' => $e['created_at'],
-            ], $st->fetchAll());
+            $events = array();
+            foreach ($st->fetchAll() as $e) {
+                $events[] = [
+                    'id' => (int)$e['id'], 'receipt_id' => (int)$e['receipt_id'],
+                    'source_id' => (int)$e['source_id'], 'check_number' => $e['check_number'],
+                    'type' => $e['type'],
+                    'document' => $e['document'], 'error' => $e['error'], 'created_at' => $e['created_at'],
+                ];
+            }
             return [200, ['events' => $events]];
         }
         return [404, ['detail' => 'Topilmadi']];

@@ -13,13 +13,14 @@ $apiKey = $_SERVER['HTTP_X_API_KEY'] ?? '';
 
 try {
     $db = relay_connect($cfg);
-    [$status, $payload] = relay_handle(
+    list($status, $payload) = relay_handle(
         $db, $cfg, $_SERVER['REQUEST_METHOD'] ?? 'GET', $path, $_GET,
         (string)file_get_contents('php://input'), $apiKey
     );
 } catch (Throwable $e) {
     error_log('relay: ' . $e);
-    [$status, $payload] = [500, ['detail' => 'Server xatosi']];
+    $status = 500;
+    $payload = ['detail' => 'Server xatosi'];
 }
 
 http_response_code($status);
