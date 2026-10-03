@@ -89,6 +89,26 @@ Yangilash (GitHub'dagi yangi kodni olish): `sudo -u receiptbot /opt/receipt-bot/
 **Talablar:** Python 3.10+; serverdan tashqariga `api.telegram.org`, `ofd.soliq.uz` va `cheklar.onesoft.uz`
 (443-port) ochiq bo'lishi kerak. Serverga tashqaridan kirish shart emas.
 
+## 1a. Windows serverga o'rnatish
+
+1. **Python 3.12** ni python.org dan o'rnating. O'rnatishda **«Add python.exe to PATH»** belgilansin.
+2. Loyihani masalan `C:\receipt-bot\` ga oching (zip yoki `git clone`). Natijada `C:\receipt-bot\receipt-bot\app\...` bo'ladi.
+3. **Administrator** sifatida ochilgan PowerShell'da:
+   ```powershell
+   cd C:\receipt-bot\receipt-bot
+   powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1
+   notepad .env
+   ```
+   `.env` da: `BOT_TOKEN`, `RELAY_URL=https://cheklar.onesoft.uz`, `RELAY_KEY` (= xostingdagi `server_key`),
+   `HOST=127.0.0.1`, `API_KEY` - bo'sh.
+4. Sinov: `deploy\windows\run.bat` - oynada `Telegram bot ishga tushdi` chiqishi kerak. Botga chek yuborib tekshiring,
+   keyin oynani yoping (Ctrl+C).
+5. Avtomatik ishga tushirish (kompyuter qayta yoqilganda ham):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File deploy\windows\install-service.ps1
+   ```
+   Log: `data\service.log`. Holat: `Get-ScheduledTask receipt-bot`. To'xtatish: `Stop-ScheduledTask receipt-bot`.
+
 ## 2. Bot qanday ishlaydi
 
 - Xodim botga **chek rasmini** (yaxshisi «fayl» sifatida - Telegram siqmaydi) yoki **QR havolasini** matn qilib yuboradi.
