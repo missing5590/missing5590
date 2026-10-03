@@ -3,18 +3,49 @@
 Korporativ karta bilan qilingan xaridlarni 1C:Бухгалтерия 3.0 ga avtomatik kiritish:
 
 ```
-Xodim ──chek rasmi / QR havola──▶ Telegram ──▶ receipt-bot (server)
-                                               • QR o'qiydi
-                                               • ofd.soliq.uz dan chek ma'lumotlarini oladi
-                                               • chek raqami bo'yicha dublikatni tekshiradi
-                                               • bazaga saqlaydi, xodimga javob beradi
-1C [Загрузить] ──HTTP──▶ receipt-bot ──▶ JSON ──▶ «Поступление товаров и услуг» (записан, не проведен)
+Xodim ─▶ Telegram ◀── ICHKI SERVER: receipt-bot (tashqaridan kirib bo'lmaydi)
+                          • QR o'qiydi, ofd.soliq.uz dan chek ma'lumotini oladi
+                          • chek raqami bo'yicha dublikatni tekshiradi, xodimga javob beradi
+                          │ tayyor chekni yuboradi / 1C natijasini o'qiydi (chiquvchi HTTPS)
+                          ▼
+            https://cheklar.onesoft.uz  ← XOSTING: relay-php (PHP + MySQL)
+                          ▲
+                          │ claim / ack (chiquvchi HTTPS)
+1C [Загрузить] (noutbuk yoki boshqa server) ──▶ «Поступление товаров и услуг» (записан, не проведен)
 ```
+
+Ichki server ham, 1C ham xostingga **o'zi** ulanadi - hech qayerda kiruvchi port ochish shart emas.
 
 | Papka | Tarkibi |
 |---|---|
-| `receipt-bot/` | Server: Telegram bot + 1C uchun HTTP API (Python, FastAPI, SQLite) |
+| `receipt-bot/` | Ichki server: Telegram bot (Python) |
+| `relay-php/` | Xosting: cheklar navbati, 1C shu yerdan oladi (PHP + MySQL) |
 | `1c/ЗагрузкаЧековTelegram/` | 1C tashqi qayta ishlash (внешняя обработка) modullari |
+
+> Agar 1C ichki serverga to'g'ridan-to'g'ri ulana olsa, xostingsiz ham ishlaydi: `RELAY_URL` bo'sh,
+> `API_KEY` to'ldiriladi va 1C da server manzili `http://SERVER:8090` bo'ladi (API yo'llari bir xil).
+
+---
+
+## 0. Xostingni sozlash (DirectAdmin)
+
+1. **Subdomen boshqaruvi** → `cheklar` (hujjat ildizi: Standart) → `/domains/cheklar.onesoft.uz/public_html`.
+2. **SSL/TLS Certificates** → `cheklar.onesoft.uz` uchun Let's Encrypt sertifikati.
+3. **Ma'lumotlar bazalari** → yangi baza va foydalanuvchi (nomi, foydalanuvchisi, parolini yozib oling).
+4. **PHP sozlamalari** → PHP 8.0 yoki yangirog'i.
+5. Fayllarni yuklash (File Manager yoki FTP):
+   ```
+   /domains/cheklar.onesoft.uz/app.php                 ← relay-php/app.php
+   /domains/cheklar.onesoft.uz/config.php              ← relay-php/config.example.php dan nusxa, to'ldiriladi
+   /domains/cheklar.onesoft.uz/public_html/index.php   ← relay-php/public_html/index.php
+   /domains/cheklar.onesoft.uz/public_html/.htaccess   ← relay-php/public_html/.htaccess
+   ```
+   `app.php` va `config.php` **public_html ichiga emas**, bir pog'ona yuqoriga qo'yiladi - brauzerdan ochilmaydi.
+6. `config.php` da baza ma'lumotlari va ikkita kalit:
+   `server_key` (ichki server uchun) va `onec_key` (1C uchun). Kalit yaratish:
+   `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
+   Jadvallar birinchi so'rovda avtomatik yaratiladi.
+7. Tekshirish: brauzerda `https://cheklar.onesoft.uz/health` → `{"ok":true}`.
 
 ---
 
@@ -37,8 +68,9 @@ sudo chmod 600 .env
 | O'zgaruvchi | Ma'nosi |
 |---|---|
 | `BOT_TOKEN` | @BotFather bergan token. **Faqat serverdagi `.env` ga yoziladi, GitHub'ga emas.** |
-| `API_KEY` | 1C so'rovlari uchun maxfiy kalit: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
-| `PORT` | 1C ulanadigan port (standart `8090`) |
+| `RELAY_URL` | Xosting manzili: `https://cheklar.onesoft.uz` |
+| `RELAY_KEY` | Xostingdagi `config.php` → `server_key` bilan bir xil |
+| `API_KEY` | Faqat to'g'ridan-to'g'ri rejimda (1C serverga o'zi ulansa). Xosting rejimida bo'sh qoldiring |
 | `DEDUP_BY` | `check_number` - faqat chek raqami bo'yicha (standart); `check_number_fm` - chek raqami + kassa (FM) |
 | `ALLOWED_CHAT_IDS` | Ruxsat berilgan Telegram chat ID'lari. Bo'sh - hammaga ochiq. Begona odam yozsa, bot uning ID'sini aytadi. |
 
@@ -54,8 +86,8 @@ curl http://localhost:8090/health      # {"ok":true}
 
 Yangilash (GitHub'dagi yangi kodni olish): `sudo -u receiptbot /opt/receipt-bot/receipt-bot/deploy/update.sh`
 
-**Talablar:** Python 3.10+, serverdan `api.telegram.org` va `ofd.soliq.uz` ochiq bo'lishi kerak; 1C ishlaydigan
-kompyuterlardan esa server porti (`8090`) ochiq bo'lishi kerak. Internet orqali ulansa, oldiga nginx + HTTPS qo'ying.
+**Talablar:** Python 3.10+; serverdan tashqariga `api.telegram.org`, `ofd.soliq.uz` va `cheklar.onesoft.uz`
+(443-port) ochiq bo'lishi kerak. Serverga tashqaridan kirish shart emas.
 
 ## 2. Bot qanday ishlaydi
 
@@ -63,13 +95,16 @@ kompyuterlardan esa server porti (`8090`) ochiq bo'lishi kerak. Internet orqali 
 - Bot darhol javob beradi: `✅ Qabul qilindi ... 4 ta qator, jami 588 308,00 so'm` yoki xato sababi.
 - Chek raqami allaqachon bo'lsa: `⚠️ Bu chek allaqachon yuborilgan`.
 - Soliq sayti javob bermasa yoki chek u yerda hali paydo bo'lmagan bo'lsa, server har `RETRY_INTERVAL` sekundda qayta urinadi.
-- 1C hujjat yaratgach, xodimga `📥 1C ga kiritildi: Поступление №...` xabari boradi.
+- Tayyor chek har `RELAY_INTERVAL` sekundda xostingga yuboriladi.
+- 1C hujjat yaratgach, server buni xostingdan bilib oladi va xodimga `📥 1C ga kiritildi: Поступление №...` yozadi.
 
-Chek holatlari: `fetch_error` → `ready` → `processing` → `imported` (yoki `parse_error`, `rejected`).
+Ichki serverdagi holatlar: `fetch_error` → `ready` → `relayed` → `imported` (yoki `parse_error`, `rejected`, `duplicate`).
+Xostingdagi holatlar: `ready` → `processing` → `imported` (yoki `rejected`).
 
-## 3. 1C uchun API
+## 3. 1C uchun API (xostingda)
 
-Barcha so'rovlarda `X-API-Key: <API_KEY>` sarlavhasi.
+Barcha so'rovlarda `X-API-Key: <onec_key>` sarlavhasi. Xuddi shu yo'llar ichki serverda ham bor
+(to'g'ridan-to'g'ri rejim uchun, `API_KEY` bilan).
 
 | So'rov | Vazifasi |
 |---|---|
@@ -77,9 +112,11 @@ Barcha so'rovlarda `X-API-Key: <API_KEY>` sarlavhasi.
 | `POST /api/receipts/{id}/ack` `{"document": "..."}` | Hujjat yaratildi |
 | `POST /api/receipts/{id}/fail` `{"error": "..."}` | Xato - chek navbatga qaytadi, keyingi yuklashda yana keladi |
 | `POST /api/receipts/{id}/reject` `{"error": "..."}` | Rad etish (dublikat kaliti bo'shaydi) |
-| `POST /api/receipts/{id}/reparse[?refetch=true]` | Saqlangan sahifani qayta tahlil qilish |
-| `GET /api/receipts?status=parse_error` | Ro'yxat (tekshirish uchun) |
-| `GET /api/receipts/{id}` / `.../image` | Bitta chek / uning rasmi |
+| `GET /api/receipts?status=ready` | Ro'yxat (tekshirish uchun) |
+| `GET /api/receipts/{id}` | Bitta chek |
+
+Ichki server xosting bilan `server_key` orqali gaplashadi: `POST /api/relay/push` (tayyor chek),
+`GET /api/relay/events?after=N` (1C natijalari).
 
 `ack`/`fail` yuborilmagan cheklar `LEASE_MINUTES` daqiqadan keyin avtomatik navbatga qaytadi.
 
@@ -108,7 +145,7 @@ Konfiguratorda: **Файл → Новый → Внешняя обработка*
 3. Obyekt moduliga `МодульОбъекта.bsl`, forma moduliga `МодульФормы.bsl` matnini qo'ying.
 4. Saqlang (`.epf`) va 1C:Предприятие'da **Файл → Открыть** orqali oching.
 
-Birinchi ochilishda server manzili (`http://192.168.1.10:8090`), `API_KEY`, organizatsiya va sklad kiritiladi -
+Birinchi ochilishda server manzili (`https://cheklar.onesoft.uz`), kalit (`onec_key`), organizatsiya va sklad kiritiladi -
 ular foydalanuvchi sozlamalarida saqlanadi.
 
 **Hujjat qanday to'ldiriladi:**
@@ -130,13 +167,14 @@ Sahifaning HTML tuzilmasi rasmiy hujjatlashtirilmagan; parser (`receipt-bot/app/
 sarlavhalaridagi kalit so'zlar (Nomi/Soni/Narxi/QQS/MXIK...) bo'yicha ishlaydi va **haqiqiy sahifada hali
 sinab ko'rilmagan**. Agar chek `parse_error` holatiga tushsa:
 
-1. Saqlangan HTML bazada qoladi (`receipts.raw_html`) - uni dasturchiga yuboring.
-2. Parser tuzatilgach: `POST /api/receipts/{id}/reparse` - chek qayta tahlil qilinadi.
+1. Saqlangan HTML ichki server bazasida qoladi (`data/receipts.db`, `receipts.raw_html`) - uni dasturchiga yuboring.
+2. Parser tuzatilgach, ichki serverning o'zida: `curl -X POST -H "X-API-Key: $API_KEY" http://localhost:8090/api/receipts/{id}/reparse`
+   (buning uchun `.env` da vaqtincha `API_KEY` qo'yiladi) - chek qayta tahlil qilinadi va xostingga yuboriladi.
 
 ## 6. Testlar
 
 ```bash
 cd receipt-bot
 pip install -r requirements-dev.txt
-python -m pytest -q
+python -m pytest -q        # relay testlari uchun php kerak (bo'lmasa o'tkazib yuboriladi)
 ```

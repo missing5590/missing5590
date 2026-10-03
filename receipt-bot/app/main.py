@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from .config import Settings
 from .db import Database, to_public
+from .relay import RelaySync
 from .service import ReceiptService
 from .telegram import TelegramBot, retry_loop
 
@@ -39,9 +40,21 @@ def create_app(settings: Settings | None = None, start_bot: bool = True) -> Fast
         if settings.bot_token and start_bot else None
     )
 
+    async def notify(row: dict, text: str) -> None:
+        if bot:
+            await bot.send(row.get("chat_id"), text, row.get("message_id"))
+
+    relay = (
+        RelaySync(db, settings.relay_url, settings.relay_key, notify)
+        if settings.relay_url and start_bot else None
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         tasks = []
+        if relay:
+            tasks.append(asyncio.create_task(relay.run(settings.relay_interval)))
+            log.info("Xosting rejimi: cheklar %s ga yuboriladi", settings.relay_url)
         if bot:
             tasks.append(asyncio.create_task(bot.run()))
             log.info("Telegram bot ishga tushdi")
@@ -58,6 +71,8 @@ def create_app(settings: Settings | None = None, start_bot: bool = True) -> Fast
                 await task
         if bot:
             await bot.close()
+        if relay:
+            await relay.close()
         db.close()
 
     app = FastAPI(title="Receipt bot API", lifespan=lifespan)
@@ -65,7 +80,8 @@ def create_app(settings: Settings | None = None, start_bot: bool = True) -> Fast
     app.state.service = service
 
     def auth(x_api_key: str = Header(default="")) -> None:
-        if not secrets.compare_digest(x_api_key, settings.api_key):
+        # API_KEY bo'sh bo'lsa (faqat xosting rejimi) - mahalliy API yopiq.
+        if not settings.api_key or not secrets.compare_digest(x_api_key, settings.api_key):
             raise HTTPException(status_code=401, detail="API kalit noto'g'ri")
 
     def get_row(receipt_id: int) -> dict:
@@ -73,10 +89,6 @@ def create_app(settings: Settings | None = None, start_bot: bool = True) -> Fast
         if not row:
             raise HTTPException(status_code=404, detail="Chek topilmadi")
         return row
-
-    async def notify(row: dict, text: str) -> None:
-        if bot:
-            await bot.send(row.get("chat_id"), text, row.get("message_id"))
 
     @app.get("/health")
     def health():
@@ -131,7 +143,7 @@ def create_app(settings: Settings | None = None, start_bot: bool = True) -> Fast
     async def reparse(receipt_id: int, refetch: bool = False):
         """Parser tuzatilgandan keyin saqlangan HTML'ni qayta tahlil qilish (yoki qayta yuklash)."""
         row = get_row(receipt_id)
-        if row["status"] in ("imported", "processing"):
+        if row["status"] in ("imported", "processing", "relayed"):
             raise HTTPException(status_code=409, detail=f"Holati {row['status']} - o'zgartirilmaydi")
         if refetch or not row.get("raw_html"):
             row = await service.fetch_and_parse(receipt_id)

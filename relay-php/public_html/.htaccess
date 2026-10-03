@@ -1,0 +1,9 @@
+# Barcha so'rovlar index.php ga
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [L,QSA]
+
+# X-API-Key sarlavhasi PHP ga yetib borishi uchun (ba'zi CGI/FPM sozlamalarida kerak)
+SetEnvIf X-API-Key "(.+)" HTTP_X_API_KEY=$1
+
+Options -Indexes

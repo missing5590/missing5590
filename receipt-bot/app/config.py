@@ -30,6 +30,10 @@ class Settings:
     retry_interval: int = field(default_factory=lambda: _int("RETRY_INTERVAL", 600))
     max_fetch_attempts: int = field(default_factory=lambda: _int("MAX_FETCH_ATTEMPTS", 36))
     lease_minutes: int = field(default_factory=lambda: _int("LEASE_MINUTES", 15))
+    # Xosting (relay) rejimi: tayyor cheklar shu manzilga yuboriladi, 1C ularni o'sha yerdan oladi.
+    relay_url: str = field(default_factory=lambda: os.getenv("RELAY_URL", "").strip().rstrip("/"))
+    relay_key: str = field(default_factory=lambda: os.getenv("RELAY_KEY", "").strip())
+    relay_interval: int = field(default_factory=lambda: _int("RELAY_INTERVAL", 30))
 
     @property
     def db_path(self) -> Path:
@@ -40,8 +44,10 @@ class Settings:
         return self.data_dir / "images"
 
     def validate(self) -> None:
-        if not self.api_key:
-            raise RuntimeError("API_KEY .env faylda ko'rsatilmagan")
+        if not self.api_key and not self.relay_url:
+            raise RuntimeError("API_KEY yoki RELAY_URL/RELAY_KEY .env faylda ko'rsatilmagan")
         if self.dedup_by not in ("check_number", "check_number_fm"):
             raise RuntimeError("DEDUP_BY faqat check_number yoki check_number_fm bo'lishi mumkin")
+        if self.relay_url and not self.relay_key:
+            raise RuntimeError("RELAY_URL ko'rsatilgan, lekin RELAY_KEY yo'q")
         self.images_dir.mkdir(parents=True, exist_ok=True)

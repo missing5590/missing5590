@@ -15,6 +15,8 @@ from pathlib import Path
 #   processing   - 1C oldi, natijasini (ack/fail) kutyapmiz
 #   imported     - 1C da hujjat yaratildi
 #   rejected     - buxgalter rad etdi (dublikat kaliti bo'shatiladi)
+#   relayed      - xostingga yuborildi, 1C o'sha yerdan oladi (relay rejimi)
+#   duplicate    - xosting bu chek raqamini allaqachon qabul qilgan
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS receipts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +41,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     image_path      TEXT,
     claimed_at      TEXT,
     onec_document   TEXT,
+    relay_id        INTEGER,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );
@@ -71,7 +74,9 @@ class Database:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(SCHEMA)
-        self._conn.commit()
+        columns = {r[1] for r in self._conn.execute("PRAGMA table_info(receipts)")}
+        if "relay_id" not in columns:  # eski bazani yangilash
+            self._conn.execute("ALTER TABLE receipts ADD COLUMN relay_id INTEGER")
 
     def close(self) -> None:
         self._conn.close()
