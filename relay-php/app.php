@@ -8,6 +8,8 @@
  */
 declare(strict_types=1);
 
+// PHP 7.4+ bilan mos (xostingdagi PHP 7.4 uchun).
+
 function relay_now(): string
 {
     return date('Y-m-d H:i:s');
@@ -126,7 +128,7 @@ function relay_handle(PDO $db, array $cfg, string $method, string $path, array $
     $isOnec = $apiKey !== '' && hash_equals((string)$cfg['onec_key'], $apiKey);
 
     // ---------------------------------------------------------------- ichki server
-    if (str_starts_with($path, '/api/relay/')) {
+    if (strpos($path, '/api/relay/') === 0) {
         if (!$isServer) {
             return [401, ['detail' => "API kalit noto'g'ri"]];
         }
@@ -151,7 +153,7 @@ function relay_handle(PDO $db, array $cfg, string $method, string $path, array $
     }
 
     // ---------------------------------------------------------------- 1C
-    if (!str_starts_with($path, '/api/receipts')) {
+    if (strpos($path, '/api/receipts') !== 0) {
         return [404, ['detail' => 'Topilmadi']];
     }
     if (!$isOnec) {

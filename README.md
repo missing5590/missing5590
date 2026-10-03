@@ -32,7 +32,7 @@ Ichki server ham, 1C ham xostingga **o'zi** ulanadi - hech qayerda kiruvchi port
 1. **Subdomen boshqaruvi** → `cheklar` (hujjat ildizi: Standart) → `/domains/cheklar.onesoft.uz/public_html`.
 2. **SSL/TLS Certificates** → `cheklar.onesoft.uz` uchun Let's Encrypt sertifikati.
 3. **Ma'lumotlar bazalari** → yangi baza va foydalanuvchi (nomi, foydalanuvchisi, parolini yozib oling).
-4. **PHP sozlamalari** → PHP 8.0 yoki yangirog'i.
+4. **PHP sozlamalari** → PHP 7.4 yoki yangirog'i (versiyani o'zgartirish shart emas).
 5. Fayllarni yuklash (File Manager yoki FTP):
    ```
    /domains/cheklar.onesoft.uz/app.php                 ← relay-php/app.php
